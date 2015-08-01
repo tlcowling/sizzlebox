@@ -1,0 +1,9 @@
+.tmp/
+modules/
+
+# DO NOT COMMIT THE KEYS YOU GENERATE!
+certs/*.pem
+certs/*.crt
+
+.librarian
+.vagrant

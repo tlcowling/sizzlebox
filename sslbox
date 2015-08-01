@@ -1,0 +1,63 @@
+#!/usr/bin/env ruby
+#
+# Simple tool for setting up this box
+# - Generates a self signed SSL certificate (2048 bit and signed SHA256)
+# - Writes to the certs folder, for use in the VM
+#
+require 'highline/import'
+require 'openssl'
+require 'json'
+
+project = {}
+
+hostname = ask("On what hostname do you want your site be accesible?") { 
+  |q| 
+  q.default = "localhost"
+  q.validate = /^(([a-zA-Z0-9]|[a-zA-Z0-9][a-zA-Z0-9\-]*[a-zA-Z0-9])\.)*([A-Za-z0-9]|[A-Za-z0-9][A-Za-z0-9\-]*[A-Za-z0-9])$/
+  q.responses[:not_valid] = 'The hostname you entered was not valid as per RFC 1123'
+}
+
+key = OpenSSL::PKey::RSA.new 2048
+public_key = key.public_key
+
+PRIVATE_KEY_PATH = "certs/private_key.pem"
+PUBLIC_KEY_PATH = "certs/public_key.pem"
+SERVER_CERT_PATH = "certs/server.crt"
+
+open PRIVATE_KEY_PATH, 'w' do |io| 
+  puts "Writing Private Key to #{PRIVATE_KEY_PATH}..."
+  io.write key.to_pem 
+end
+open 'certs/public_key.pem', 'w' do |io|
+  puts "Writing Public Key to #{PUBLIC_KEY_PATH}..."
+  io.write public_key.to_pem 
+end
+
+subject = OpenSSL::X509::Name.parse "CN=#{hostname}"
+
+cert = OpenSSL::X509::Certificate.new
+cert.version = 2
+cert.serial = 0x0
+cert.not_before = Time.now
+cert.not_after = Time.now + 365*24*60*60
+
+cert.public_key = public_key
+cert.subject = subject
+cert.issuer  = subject
+
+ef = OpenSSL::X509::ExtensionFactory.new
+ef.subject_certificate = cert
+ef.issuer_certificate = cert
+cert.extensions = [
+  ef.create_extension("basicConstraints","CA:TRUE", true),
+  ef.create_extension("subjectKeyIdentifier", "hash"),
+  # ef.create_extension("keyUsage", "cRLSign,keyCertSign", true),
+]
+cert.add_extension ef.create_extension("authorityKeyIdentifier",
+                                       "keyid:always,issuer:always")
+
+server_cert = cert.sign key, OpenSSL::Digest::SHA256.new
+open SERVER_CERT_PATH, 'w' do |io| 
+  puts "Writing Server Certificate to #{SERVER_CERT_PATH}..."
+  io.write server_cert 
+end
